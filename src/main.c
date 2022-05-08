@@ -44,7 +44,6 @@ handle_option(char *arg)
     bpType = STATIC;
   } else if (!strncmp(arg,"--gshare",8)) {
     bpType = GSHARE;
-    // sscanf(arg+9,"%d", &ghistoryBits);
   } else if (!strncmp(arg,"--tournament",12)) {
     bpType = TOURNAMENT;
   } else if (!strncmp(arg,"--custom",8)) {
@@ -61,7 +60,7 @@ handle_option(char *arg)
 // Reads a line from the input stream and extracts the
 // PC and Outcome of a branch
 //
-// Returns True if Successful 
+// Returns True if Successful
 //
 int
 read_branch(uint32_t *pc, uint8_t *outcome)
