@@ -34,7 +34,7 @@ int verbose;
 
 //bimode
 int choiceBits = 12;
-int bmhistoryBits = 12;
+int bmhistoryBits = 14;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -86,6 +86,7 @@ int saturator(uint8_t outcome, uint8_t curr_state) {
       ans = (outcome == TAKEN) ? ST : WT;
       break;
     }
+    printf("If you reached this step saturator failed\n");
     return ans;
 }
 //------------------------------------//
@@ -212,17 +213,9 @@ uint8_t trnmt_predict(uint32_t pc) {
   int choice = choice_prediction[global_bht_ind];
 
   if(choice == WN || choice == SN) {
-    if (global_prediction <= 1) {
-      return NOTTAKEN;
-    } else {
-      return TAKEN;
-    }
+    return outcome_generator(global_prediction);
   } else {
-    if (local_prediction <= 1) {
-      return NOTTAKEN;
-    } else {
-      return TAKEN;
-    }
+    return outcome_generator(local_prediction);
   }
 
   // printf("Finished predict\n");
@@ -241,10 +234,6 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
   int local_prediction = local_bht[local_bht_ind];
   int choice = choice_prediction[global_bht_ind];
 
-  // Train predictions using saturators
-  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
-  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
-
   // Train choice in case of differing predictions -> choose the more correct one
   if (outcome_generator(global_prediction) != outcome_generator(local_prediction)) {
     // If global prediction is correct, saturate choice w/ 0
@@ -258,6 +247,11 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
     // doesn't matter where you tend to if both are the same...
     choice_prediction[global_bht_ind] = saturator(1, choice);
   }
+  // Train predictions using saturators
+  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
+  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
+
+
 
   // Modify historys - NOTE THAT LOCAL NEEDS TO BE CUT OFF BY SIZE
   ghistory = (ghistory << 1) | outcome;
@@ -314,20 +308,17 @@ void train_bimode(uint32_t pc, uint8_t outcome) {
   int choice = choice_pht[index];
   int nt_prediction = nt_pht[index];
   int t_prediction = t_pht[index];
-  int direction_prediction = -1;
+  int bimode_prediction = bimode_predict(pc);
 
-  if (outcome_generator(choice) == 0) {
-    direction_prediction = nt_prediction;
-    nt_pht[index] = saturator(outcome, nt_prediction);
-
-  } else {
-    direction_prediction = t_prediction;
-    t_pht[index] = saturator(outcome, t_prediction);
+ // If NOT (outcome of choice != outcome && direction pht (which is wrong) predicts correct) update choice
+  if (!(outcome_generator(choice) != outcome && bimode_prediction == outcome)) {
+    choice_pht[index] = saturator(outcome, choice);
   }
 
-  // If NOT (outcome of choice != outcome && direction pht (which is wrong) predicts correct) update choice
-  if (!(outcome_generator(choice) != outcome && outcome_generator(direction_prediction) == outcome)) {
-    choice_pht[index] = saturator(outcome, choice);
+  if (outcome_generator(choice) == 0) {
+    nt_pht[index] = saturator(outcome, nt_prediction);
+  } else {
+    t_pht[index] = saturator(outcome, t_prediction);
   }
 
   //Update history register
