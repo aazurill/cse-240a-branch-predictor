@@ -229,16 +229,17 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
 
   int local_pht_ind = pc & ((1 << pcBits) -1);
   int local_bht_ind = local_pht[local_pht_ind];
-  // printf("local bht ind %d\n", local_pht_ind);
-  // printf("Local check is clear \n");
 
-
+  // Old predictions
   int global_prediction = global_bht[global_bht_ind];
   int local_prediction = local_bht[local_bht_ind];
   int choice = choice_prediction[global_bht_ind];
 
-  // printf("glob: %d local: %d choice: %d\n", global_prediction, local_prediction, choice);
-    // Train choice in case of differing predictions -> choose the more correct one
+  // Train predictions using saturators
+  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
+  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
+
+  // Train choice in case of differing predictions -> choose the more correct one
   if (outcome_generator(global_prediction) != outcome_generator(local_prediction)) {
     // If global prediction is correct, saturate choice w/ 0
     if (outcome_generator(global_prediction) == outcome) {
@@ -248,9 +249,8 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
       choice_prediction[global_bht_ind] = saturator(1, choice);
     }
   }
-  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
-  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
 
+  // Modify historys - NOTE THAT LOCAL NEEDS TO BE CUT OFF BY SIZE 
   ghistory = (ghistory << 1) | outcome;
   local_pht[local_pht_ind] = ((local_bht_ind << 1) | outcome) & ((1 << pcBits) -1);
 }
