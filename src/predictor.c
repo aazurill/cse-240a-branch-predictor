@@ -34,6 +34,7 @@ int verbose;
 
 //bimode
 int choiceBits = 12;
+int bimodehistoryBits = 12;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -292,27 +293,28 @@ void init_custom() {
 }
 
 uint8_t custom_predict(uint32_t pc) {
-  int bht_entries = 1 << ghistoryBits;
+  int bht_entries = 1 << bimodehistoryBits;
   int pc_lower_bits = pc & (bht_entries-1);
   int ghistory_lower_bits = ghistory & (bht_entries -1);
   int index = pc_lower_bits ^ ghistory_lower_bits;
 
-  int choice = choice_pht[index];
+  int direction_chosen = outcome_generator(choice_pht[pc_lower_bits]);
   // If choice to NT, go to NT pht. Else, go to T pht
-  if (outcome_generator(choice) == 0) {
-    return nt_pht[index];
+  if (direction_chosen == 0) {
+    return outcome_generator(nt_pht[index]);
   } else {
-    return t_pht[index];
+    return outcome_generator(t_pht[index]);
   }
 }
 
 void train_custom(uint32_t pc, uint8_t outcome) {
-  int bht_entries = 1 << ghistoryBits;
+  int bht_entries = 1 << bimodehistoryBits;
   int pc_lower_bits = pc & (bht_entries-1);
   int ghistory_lower_bits = ghistory & (bht_entries -1);
   int index = pc_lower_bits ^ ghistory_lower_bits;
 
-  int choice = choice_pht[index];
+  int choice = choice_pht[pc_lower_bits];
+  int direction_chosen = outcome_generator(choice_pht[pc_lower_bits]);
   int nt_prediction = nt_pht[index];
   int t_prediction = t_pht[index];
   int bimode_prediction = custom_predict(pc);
