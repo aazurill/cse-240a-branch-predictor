@@ -275,6 +275,7 @@ cleanup_trnmt() {
 // bimode predictor
 
 void init_custom() {
+  printf("testing");
   choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   t_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
@@ -288,6 +289,7 @@ void init_custom() {
 
   ghistory = 0;
 
+  printf("testing");
 }
 
 uint8_t custom_predict(uint32_t pc) {
