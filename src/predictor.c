@@ -25,13 +25,16 @@ const char *bpName[4] = { "Static", "Gshare",
 //define number of bits required for indexing the BHT here.
 int ghistoryBits = 14; // Number of bits used for Global History
 
-
+// tourn
 int ghBits= 12; // Number of bits used for global + chooser
 int lhBits = 10; // Number of bits used for Local Branch Pattern
 int pcBits = 10; // Number of bits used for Local pattern history
 int bpType;       // Branch Prediction Type
 int verbose;
 
+//bimode
+int choiceBits = 12;
+int bmhistoryBits = 12;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -48,6 +51,12 @@ uint8_t *choice_prediction;
 uint8_t *local_bht;
 uint8_t *local_pht;
 uint8_t *global_bht;
+
+//bimode
+uint8_t *choice_pht;
+uint8_t *nt_pht;
+uint8_t *t_pht;
+
 
 // Helper outcome function
 int outcome_generator(uint32_t counter) {
@@ -156,7 +165,6 @@ void cleanup_gshare() {
 // -------------------------------------------------------------------
 // tournamnet predictor
 
-//gshare functions
 void init_trnmt() {
   global_bht = (uint8_t*)malloc((1 << ghBits) * sizeof(uint8_t));
   local_bht = (uint8_t*)malloc((1 << lhBits) * sizeof(uint8_t));
@@ -179,8 +187,6 @@ void init_trnmt() {
 
   ghistory = 0;
 }
-
-
 
 uint8_t trnmt_predict(uint32_t pc) {
 
@@ -248,6 +254,9 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
     // Else, saturate choice w/ 1
       choice_prediction[global_bht_ind] = saturator(1, choice);
     }
+  } else {
+    // doesn't matter where you tend to if both are the same...
+    choice_prediction[global_bht_ind] = saturator(1, choice);
   }
 
   // Modify historys - NOTE THAT LOCAL NEEDS TO BE CUT OFF BY SIZE
@@ -263,6 +272,76 @@ cleanup_trnmt() {
   free(choice_prediction);
 }
 
+// -------------------------------------------------------------------
+// bimode predictor
+
+void init_bimode() {
+  choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
+  nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
+  t_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
+
+  int i = 0;
+  for(i = 0; i < (1 << choiceBits); i++){
+    choice_pht[i] = WN;
+    nt_pht[i] = WN;
+    t_pht[i] = WT;
+  }
+
+  ghistory = 0;
+}
+
+uint8_t bimode_predict(uint32_t pc) {
+  int bht_entries = 1 << bmhistoryBits;
+  int pc_lower_bits = pc & (bht_entries-1);
+  int ghistory_lower_bits = ghistory & (bht_entries -1);
+  int index = pc_lower_bits ^ ghistory_lower_bits;
+
+  int choice = choice_pht[index];
+  // If choice to NT, go to NT pht. Else, go to T pht
+  if (outcome_generator(choice) == 0) {
+    return nt_pht[index];
+  } else {
+    return t_pht[index];
+  }
+}
+
+void train_bimode(uint32_t pc, uint8_t outcome) {
+  int bht_entries = 1 << bmhistoryBits;
+  int pc_lower_bits = pc & (bht_entries-1);
+  int ghistory_lower_bits = ghistory & (bht_entries -1);
+  int index = pc_lower_bits ^ ghistory_lower_bits;
+
+  int choice = choice_pht[index];
+  int nt_prediction = nt_pht[index];
+  int t_prediction = t_pht[index];
+  int direction_prediction = -1;
+
+  if (outcome_generator(choice) == 0) {
+    direction_prediction = nt_prediction;
+    nt_pht[index] = saturator(outcome, nt_prediction);
+
+  } else {
+    direction_prediction = t_prediction;
+    t_pht[index] = saturator(outcome, t_prediction);
+  }
+
+  // If NOT (outcome of choice != outcome && direction pht (which is wrong) predicts correct) update choice
+  if (!(outcome_generator(choice) != outcome && outcome_generator(direction_prediction) == outcome)) {
+    choice_pht[index] = saturator(outcome, choice);
+  }
+
+  //Update history register
+  ghistory = ((ghistory << 1) | outcome);
+}
+
+void
+cleanup_bimode() {
+  free(choice_pht);
+  free(t_pht);
+  free(nt_pht);
+}
+
+
 void
 init_predictor()
 {
@@ -275,6 +354,8 @@ init_predictor()
       init_trnmt();
       break;
     case CUSTOM:
+      init_bimode();
+      break;
     default:
       break;
   }
@@ -298,6 +379,7 @@ make_prediction(uint32_t pc)
     case TOURNAMENT:
       return trnmt_predict(pc);
     case CUSTOM:
+      return bimode_predict(pc);
     default:
       break;
   }
@@ -322,6 +404,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
     case TOURNAMENT:
       return train_trnmt(pc, outcome);
     case CUSTOM:
+      return train_bimode(pc, outcome);
     default:
       break;
   }
