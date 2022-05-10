@@ -25,7 +25,7 @@ const char *bpName[4] = { "Static", "Gshare",
 //define number of bits required for indexing the BHT here.
 int ghistoryBits = 14; // Number of bits used for Global History
 
-
+// tourn
 int ghBits= 12; // Number of bits used for global + chooser
 int lhBits = 10; // Number of bits used for Local Branch Pattern
 int pcBits = 10; // Number of bits used for Local pattern history
@@ -34,6 +34,7 @@ int verbose;
 
 //bimode
 int choiceBits = 12;
+int bmhistoryBits = 14;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -56,8 +57,9 @@ uint8_t *choice_pht;
 uint8_t *nt_pht;
 uint8_t *t_pht;
 
+
 // Helper outcome function
-int outcome_generator(uint32_t counter) {
+int outcome_generator(uint8_t counter) {
   if (counter == WN || counter == SN) {
     return 0;
   } else {
@@ -163,7 +165,6 @@ void cleanup_gshare() {
 // -------------------------------------------------------------------
 // tournamnet predictor
 
-//gshare functions
 void init_trnmt() {
   global_bht = (uint8_t*)malloc((1 << ghBits) * sizeof(uint8_t));
   local_bht = (uint8_t*)malloc((1 << lhBits) * sizeof(uint8_t));
@@ -186,8 +187,6 @@ void init_trnmt() {
 
   ghistory = 0;
 }
-
-
 
 uint8_t trnmt_predict(uint32_t pc) {
 
@@ -213,17 +212,9 @@ uint8_t trnmt_predict(uint32_t pc) {
   int choice = choice_prediction[global_bht_ind];
 
   if(choice == WN || choice == SN) {
-    if (global_prediction <= 1) {
-      return NOTTAKEN;
-    } else {
-      return TAKEN;
-    }
+    return outcome_generator(global_prediction);
   } else {
-    if (local_prediction <= 1) {
-      return NOTTAKEN;
-    } else {
-      return TAKEN;
-    }
+    return outcome_generator(local_prediction);
   }
 
   // printf("Finished predict\n");
@@ -242,10 +233,6 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
   int local_prediction = local_bht[local_bht_ind];
   int choice = choice_prediction[global_bht_ind];
 
-  // Train predictions using saturators
-  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
-  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
-
   // Train choice in case of differing predictions -> choose the more correct one
   if (outcome_generator(global_prediction) != outcome_generator(local_prediction)) {
     // If global prediction is correct, saturate choice w/ 0
@@ -255,7 +242,15 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
     // Else, saturate choice w/ 1
       choice_prediction[global_bht_ind] = saturator(1, choice);
     }
+  } else {
+    // doesn't matter where you tend to if both are the same...
+    choice_prediction[global_bht_ind] = saturator(1, choice);
   }
+  // Train predictions using saturators
+  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
+  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
+
+
 
   // Modify historys - NOTE THAT LOCAL NEEDS TO BE CUT OFF BY SIZE
   ghistory = (ghistory << 1) | outcome;
@@ -273,7 +268,7 @@ cleanup_trnmt() {
 // -------------------------------------------------------------------
 // bimode predictor
 
-void init_custom() {
+void init_bimode() {
   printf("Hello bimode\n");
   choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
@@ -291,8 +286,8 @@ void init_custom() {
   printf("done init bimode\n");
 }
 
-uint8_t custom_predict(uint32_t pc) {
-  int bht_entries = 1 << ghistoryBits;
+uint8_t bimode_predict(uint32_t pc) {
+  int bht_entries = 1 << bmhistoryBits;
   int pc_lower_bits = pc & (bht_entries-1);
   int ghistory_lower_bits = ghistory & (bht_entries -1);
   int index = pc_lower_bits ^ ghistory_lower_bits;
@@ -306,8 +301,8 @@ uint8_t custom_predict(uint32_t pc) {
   }
 }
 
-void train_custom(uint32_t pc, uint8_t outcome) {
-  int bht_entries = 1 << ghistoryBits;
+void train_bimode(uint32_t pc, uint8_t outcome) {
+  int bht_entries = 1 << bmhistoryBits;
   int pc_lower_bits = pc & (bht_entries-1);
   int ghistory_lower_bits = ghistory & (bht_entries -1);
   int index = pc_lower_bits ^ ghistory_lower_bits;
@@ -315,7 +310,7 @@ void train_custom(uint32_t pc, uint8_t outcome) {
   int choice = choice_pht[index];
   int nt_prediction = nt_pht[index];
   int t_prediction = t_pht[index];
-  int bimode_prediction = custom_predict(pc);
+  int bimode_prediction = bimode_predict(pc);
 
  // If NOT (outcome of choice != outcome && direction pht (which is wrong) predicts correct) update choice
   if (!(outcome_generator(choice) != outcome && bimode_prediction == outcome)) {
@@ -338,6 +333,8 @@ cleanup_custom() {
   free(t_pht);
   free(nt_pht);
 }
+
+
 void
 init_predictor()
 {
@@ -350,7 +347,7 @@ init_predictor()
       init_trnmt();
       break;
     case CUSTOM:
-      init_custom();
+      init_bimode();
       break;
     default:
       break;
@@ -375,7 +372,7 @@ make_prediction(uint32_t pc)
     case TOURNAMENT:
       return trnmt_predict(pc);
     case CUSTOM:
-      return custom_predict(pc);
+      return bimode_predict(pc);
     default:
       break;
   }
@@ -400,7 +397,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
     case TOURNAMENT:
       return train_trnmt(pc, outcome);
     case CUSTOM:
-      return train_custom(pc, outcome);
+      return train_bimode(pc, outcome);
     default:
       break;
   }
