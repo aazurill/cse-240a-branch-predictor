@@ -86,7 +86,6 @@ int saturator(uint8_t outcome, uint8_t curr_state) {
       ans = (outcome == TAKEN) ? ST : WT;
       break;
     }
-    printf("If you reached this step saturator failed\n");
     return ans;
 }
 //------------------------------------//
@@ -270,6 +269,7 @@ cleanup_trnmt() {
 // bimode predictor
 
 void init_bimode() {
+  printf("Hello bimode\n");
   choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   t_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
@@ -282,6 +282,8 @@ void init_bimode() {
   }
 
   ghistory = 0;
+
+  printf("done init bimode\n");
 }
 
 uint8_t bimode_predict(uint32_t pc) {
@@ -326,7 +328,7 @@ void train_bimode(uint32_t pc, uint8_t outcome) {
 }
 
 void
-cleanup_bimode() {
+cleanup_custom() {
   free(choice_pht);
   free(t_pht);
   free(nt_pht);
