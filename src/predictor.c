@@ -26,9 +26,9 @@ const char *bpName[4] = { "Static", "Gshare",
 int ghistoryBits = 14; // Number of bits used for Global History
 
 
-int ghBits= 13; // Number of bits used for first level Local Branch Pattern History
-int lhBits = 11; // Number of bits used for Local Branch Pattern
-int choiceBits = 13; // Number of bits used for Choice Predictor
+int ghBits= 14; // Number of bits used for global + chooser
+int lhBits = 14; // Number of bits used for Local Branch Pattern
+int pcBits = 14; // Number of bits used for Local pattern history
 int bpType;       // Branch Prediction Type
 int verbose;
 
@@ -44,22 +44,41 @@ uint64_t ghistory;
 uint8_t *bht_gshare;
 
 //tournament
-uint32_t *choice_prediction;
-uint64_t *local_bht;
+uint8_t *choice_prediction;
+uint8_t *local_bht;
 uint32_t *local_pht;
-uint32_t *global_bht;
+uint8_t *global_bht;
 
 // Helper outcome function
-uint8_t outcome_generator(uint32_t counter) {
+int outcome_generator(uint32_t counter) {
   if (counter == WN || counter == SN) {
     return 0;
   } else {
     return 1;
   }
-  return 0;
+  printf("GENERATOR FAILED\n");
+  return -1;
 }
 
-
+// Helper saturator
+int saturator(uint8_t outcome, uint8_t curr_state) {
+  int ans = -1;
+  switch(curr_state) {
+    case SN:
+      ans = (outcome == TAKEN) ? WN : SN;
+      break;
+    case WN:
+      ans = (outcome == TAKEN) ? WT : SN;
+      break;
+    case WT:
+      ans = (outcome == TAKEN) ? ST : WN;
+      break;
+    case ST:
+      ans = (outcome == TAKEN) ? ST : WT;
+      break;
+    }
+    return ans;
+}
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
@@ -76,6 +95,7 @@ void init_gshare() {
   for(i = 0; i< bht_entries; i++){
     bht_gshare[i] = WN;
   }
+  printf("This is size of bht_gshare %d\n", i);
   ghistory = 0;
 }
 
@@ -138,23 +158,25 @@ void cleanup_gshare() {
 
 //gshare functions
 void init_trnmt() {
-  global_bht = (uint32_t*)malloc((1 << ghBits) * sizeof(uint32_t));
-  local_bht = (uint64_t*)malloc((1 << lhBits) * sizeof(uint64_t));
+  global_bht = (uint8_t*)malloc((1 << ghBits) * sizeof(uint8_t));
+  local_bht = (uint8_t*)malloc((1 << lhBits) * sizeof(uint8_t));
   local_pht = (uint32_t*)malloc((1 << lhBits) * sizeof(uint32_t));
-  choice_prediction = (uint32_t*)malloc((1 << choiceBits) * sizeof(uint32_t));
+  choice_prediction = (uint8_t*)malloc((1 << ghBits) * sizeof(uint8_t));
 
   int i = 0;
   for(i = 0; i < (1 << ghBits); i++){
     global_bht[i] = WN;
-    choice_prediction[i] = WN;
-
-
-    // reminder that:
-      // local_history_table[pc] = pattern
-      // local_pattern_table[pattern] = saturating counter prediction
-    local_pht[i] = 0;
+  }
+  for(i = 0; i < (1 << lhBits); i++) {
     local_bht[i] = WN;
   }
+  for(i = 0; i < (1 << pcBits); i++) {
+    local_pht[i] = 0;
+  }
+  for(i = 0; i < (1 << ghBits); i++) {
+    choice_prediction[i] = WT;
+  }
+
   ghistory = 0;
 }
 
@@ -171,7 +193,7 @@ uint8_t trnmt_predict(uint32_t pc) {
   // printf("global prediction is %d\n", global_prediction);
   // REMIND: local_pht map pc -> branch history
   //         local_bht map branch history -> prediction
-  int local_pht_ind = pc & ((1 << lhBits) -1);
+  int local_pht_ind = pc & ((1 << pcBits) -1);
 
   int local_bht_ind = local_pht[local_pht_ind];
   // printf("local ind is %d\n", local_bht_ind);
@@ -180,18 +202,17 @@ uint8_t trnmt_predict(uint32_t pc) {
   int local_prediction = local_bht[local_bht_ind];
   // printf("local prediction is %d\n", local_prediction);
 
-
   // WN and SN = global_choice | ST and WT = local_choice
   int choice = choice_prediction[global_bht_ind];
 
   if(choice == WN || choice == SN) {
-    if (global_prediction == WN || global_prediction == SN) {
+    if (global_prediction <= 1) {
       return NOTTAKEN;
     } else {
       return TAKEN;
     }
   } else {
-    if (local_prediction == WN || local_prediction == SN) {
+    if (local_prediction <= 1) {
       return NOTTAKEN;
     } else {
       return TAKEN;
@@ -205,109 +226,33 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
   // printf("\n\nMade it to train\n\n");
   //get lower ghistoryBits of pc
   int global_bht_ind = ghistory & ((1 << ghBits) -1);
-  int global_prediction = global_bht[global_bht_ind];
 
-  // printf("Global check is clear \n");
-  // REMIND: local_pht map pc -> branch history
-  //         local_bht map branch history -> prediction
-  int local_pht_ind = pc & ((1 << lhBits) -1);
-  // printf("local pht ind %d\n", local_pht_ind);
+  int local_pht_ind = pc & ((1 << pcBits) -1);
   int local_bht_ind = local_pht[local_pht_ind];
   // printf("local bht ind %d\n", local_pht_ind);
-  int local_prediction = local_bht[local_bht_ind];
   // printf("Local check is clear \n");
 
 
-  // WN and SN = global_choice | ST and WT = local_choice
+  int global_prediction = global_bht[global_bht_ind];
+  int local_prediction = local_bht[local_bht_ind];
   int choice = choice_prediction[global_bht_ind];
 
   // printf("glob: %d local: %d choice: %d\n", global_prediction, local_prediction, choice);
-
-  //Update state of entry in bht based on outcome
-  switch(global_bht[global_bht_ind]){
-    case WN:
-      global_bht[global_bht_ind] = (outcome==TAKEN)?WT:SN;
-      break;
-    case SN:
-      global_bht[global_bht_ind] = (outcome==TAKEN)?WN:SN;
-      break;
-    case WT:
-      global_bht[global_bht_ind] = (outcome==TAKEN)?ST:WN;
-      break;
-    case ST:
-      global_bht[global_bht_ind] = (outcome==TAKEN)?ST:WT;
-      break;
-    default:
-      printf("Warning: Undefined state of entry in GSHARE BHT!\n");
-  }
-
-  //Update history register
-  ghistory = ((ghistory << 1) | outcome);
-
-  // Training local
-  switch(local_bht[local_bht_ind]) {
-    case SN:
-      local_bht[local_bht_ind] = (outcome == TAKEN) ? WN : SN;
-      break;
-    case WN:
-      local_bht[local_bht_ind] = (outcome == TAKEN) ? WT : SN;
-      break;
-    case WT:
-      local_bht[local_bht_ind] = (outcome == TAKEN) ? ST : WN;
-      break;
-    case ST:
-      local_bht[local_bht_ind] = (outcome == TAKEN) ? ST : WT;
-      break;
-    default:
-      printf("Warning: Undefined state of entry in LOCAL BHT!\n");
-  }
-
-  int local_hist = ((local_pht[local_pht_ind] <<1) & ((1 << lhBits) -1)| outcome);
-  local_pht[local_pht_ind] = local_hist;
-
-  // Training choice
-  int choice_train;
-  if (outcome_generator(local_prediction) != outcome_generator(global_prediction)) {
-    if (outcome == NOTTAKEN) {
-    // If local is in the correct direction, move choice predictor to stronger
-    if (local_prediction == WN || local_prediction == SN) {
-      choice_train = 1;
+    // Train choice in case of differing predictions -> choose the more correct one
+  if (outcome_generator(global_prediction) != outcome_generator(local_prediction)) {
+    // If global prediction is correct, saturate choice w/ 0
+    if (outcome_generator(global_prediction) == outcome) {
+      choice_prediction[global_bht_ind] = saturator(0, choice);
     } else {
-      choice_train = 0;
-    }
-    } else {
-      if (global_prediction == WN || global_prediction == SN) {
-        choice_train = 0;
-      } else {
-        choice_train = 1;
-      }
+    // Else, saturate choice w/ 1
+      choice_prediction[global_bht_ind] = saturator(1, choice);
     }
   }
+  local_bht[local_bht_ind] = saturator(outcome, local_prediction);
+  global_bht[global_bht_ind] = saturator(outcome, global_prediction);
 
-  int old_choice = choice_prediction[global_bht_ind];
-
-// if choice is local, means that choice_prediction needs to be more positive
-// if choice is global, means choice_prediction needs to be more negative
-switch(choice_prediction[global_bht_ind]) {
-  case SN:
-    choice_prediction[global_bht_ind] = (choice_train == TAKEN) ? WN : SN;
-    break;
-  case WN:
-    choice_prediction[global_bht_ind] = (choice_train == TAKEN) ? WT : SN;
-    break;
-  case WT:
-      choice_prediction[global_bht_ind] = (choice_train == TAKEN) ? ST : WN;
-    break;
-  case ST:
-    choice_prediction[global_bht_ind] = (choice_train == TAKEN) ? ST : WT;
-    break;
-  default:
-    printf("Warning: Undefined state of entry in LOCAL BHT!\n");
-  }
-
-  // if (old_choice != 0 && old_choice != 3) {
-  // printf("Old local: %d Old global: %d Old choice: %d | N local: %llu N global: %d N Choice: %d\n Outcome: %d", local_prediction, global_prediction, old_choice, local_bht[local_bht_ind], global_bht[global_bht_ind], choice_prediction[global_bht_ind], outcome);
-  // }
+  ghistory = (ghistory << 1) | outcome;
+  local_pht[local_pht_ind] = ((local_bht_ind << 1) | outcome) & ((1 << pcBits) -1);
 }
 
 void
