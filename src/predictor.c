@@ -46,7 +46,7 @@ uint8_t *bht_gshare;
 //tournament
 uint8_t *choice_prediction;
 uint8_t *local_bht;
-uint32_t *local_pht;
+uint8_t *local_pht;
 uint8_t *global_bht;
 
 // Helper outcome function
@@ -160,7 +160,7 @@ void cleanup_gshare() {
 void init_trnmt() {
   global_bht = (uint8_t*)malloc((1 << ghBits) * sizeof(uint8_t));
   local_bht = (uint8_t*)malloc((1 << lhBits) * sizeof(uint8_t));
-  local_pht = (uint32_t*)malloc((1 << pcBits) * sizeof(uint32_t));
+  local_pht = (uint8_t*)malloc((1 << pcBits) * sizeof(uint8_t));
   choice_prediction = (uint8_t*)malloc((1 << ghBits) * sizeof(uint8_t));
 
   int i = 0;
@@ -228,7 +228,7 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
   int global_bht_ind = ghistory & ((1 << ghBits) -1);
 
   int local_pht_ind = pc & ((1 << pcBits) -1);
-  int local_bht_ind = local_pht[local_pht_ind];
+  int local_bht_ind = local_pht[local_pht_ind] & ((1 << lhBits) -1);
 
   // Old predictions
   int global_prediction = global_bht[global_bht_ind];
@@ -250,7 +250,7 @@ void train_trnmt(uint32_t pc, uint8_t outcome) {
     }
   }
 
-  // Modify historys - NOTE THAT LOCAL NEEDS TO BE CUT OFF BY SIZE 
+  // Modify historys - NOTE THAT LOCAL NEEDS TO BE CUT OFF BY SIZE
   ghistory = (ghistory << 1) | outcome;
   local_pht[local_pht_ind] = ((local_bht_ind << 1) | outcome) & ((1 << pcBits) -1);
 }
