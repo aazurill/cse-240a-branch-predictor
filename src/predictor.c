@@ -33,8 +33,8 @@ int bpType;       // Branch Prediction Type
 int verbose;
 
 //bimode
-int choiceBits = 12;
-int bimodehistoryBits = 12;
+int choiceBits = 13;
+int bimodehistoryBits = 13;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -275,7 +275,6 @@ cleanup_trnmt() {
 // bimode predictor
 
 void init_custom() {
-  printf("Hello bimode\n");
   choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   t_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
@@ -289,7 +288,6 @@ void init_custom() {
 
   ghistory = 0;
 
-  printf("done init bimode\n");
 }
 
 uint8_t custom_predict(uint32_t pc) {
