@@ -34,7 +34,7 @@ int verbose;
 
 //bimode
 int choiceBits = 12;
-int bimodehistoryBits = 12;
+int gpHistoryBits= 12;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -53,9 +53,9 @@ uint8_t *local_pht; // 1024 * 10 bits
 uint8_t *global_bht; //4096 x 2 bits
 
 //bimode
-uint8_t *choice_pht;
-uint8_t *nt_pht;
-uint8_t *t_pht;
+uint8_t *cht_custom;
+uint8_t *pht_taken;
+uint8_t *pht_nottaken;
 
 // Helper outcome function
 int outcome_generator(uint32_t counter) {
@@ -275,15 +275,17 @@ cleanup_trnmt() {
 // bimode predictor
 void
 init_custom() {
-  choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
-  nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
-  t_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
+  uint32_t pht_entries = 1 << gpHistoryBits;
+
+  cht_custom = (uint8_t*)malloc(pht_entries * sizeof(uint8_t));
+  pht_taken = (uint8_t*)malloc(pht_entries * sizeof(uint8_t));
+  pht_nottaken = (uint8_t*)malloc(pht_entries * sizeof(uint8_t));
 
   int i = 0;
   for(i = 0; i < (1 << choiceBits); i++){
-    choice_pht[i] = WN;
-    nt_pht[i] = WN;
-    t_pht[i] = WT;
+    cht_custom[i] = WN;
+    pht_taken[i] = WT;
+    pht_nottaken[i] = WN;
   }
 
   ghistory = 0;
@@ -291,48 +293,134 @@ init_custom() {
 
 uint8_t
 custom_predict(uint32_t pc) {
-  int bht_entries = 1 << bimodehistoryBits;
-  int pc_lower_bits = pc & (bht_entries-1);
-  int ghistory_lower_bits = ghistory & (bht_entries -1);
-  int index = pc_lower_bits ^ ghistory_lower_bits;
+  uint32_t pht_entries = 1 << gpHistoryBits;
+  uint32_t pc_lower_bits = pc & (pht_entries-1);
+  uint32_t ghistory_lower_bits = ghistory & (pht_entries -1);
+  uint32_t index = pc_lower_bits ^ ghistory_lower_bits;
 
-  int direction_chosen = outcome_generator(choice_pht[pc_lower_bits]);
-  // If choice to NT, go to NT pht. Else, go to T pht
+  int direction_chosen = outcome_generator(cht_custom[pc_lower_bits]);
   if (direction_chosen == 0) {
-    return outcome_generator(nt_pht[index]);
+    return outcome_generator(pht_nottaken[index]);
   } else {
-    return outcome_generator(t_pht[index]);
+    return outcome_generator(pht_taken[index]);
   }
 }
 
 void
 train_custom(uint32_t pc, uint8_t outcome) {
-  uint32_t bht_entries = 1 << bimodehistoryBits;
+  uint32_t bht_entries = 1 << gpHistoryBits;
   uint32_t pc_lower_bits = pc & (bht_entries-1);
   uint32_t ghistory_lower_bits = ghistory & (bht_entries -1);
   uint32_t index = pc_lower_bits ^ ghistory_lower_bits;
 
-  uint8_t choice = outcome_generator(choice_pht[pc_lower_bits]);
-  uint8_t bimode_prediction = custom_predict(pc);
-
- // If NOT (outcome of choice != outcome && direction pht (which is wrong) predicts correct) update choice
-  if (!(choice != outcome && bimode_prediction == outcome)) {
-    choice_pht[pc_lower_bits] = saturator(outcome, choice_pht[pc_lower_bits]);
+  switch (cht_custom[pc_lower_bits]){
+    case SN:
+    case WN:
+      if(outcome == TAKEN) {
+        pht_nottaken[index] = saturator(outcome, pht_nottaken[index]);
+        if(outcome_generator(cht_custom[pc_lower_bits]) == 0) {
+          cht_custom[pc_lower_bits] = saturator(outcome, cht_custom[pc_lower_bits]);
+        }
+        // switch (pht_nottaken[index]){
+        //   case SN:
+        //     pht_nottaken[index] = WN;
+        //     if(cht_custom[pc_lower_bits] == SN) {
+        //       cht_custom[pc_lower_bits] = WN;
+        //     } else {
+        //       cht_custom[pc_lower_bits] = WT;
+        //     }
+        //     break;
+        //   case WN:
+        //     pht_nottaken[index] = WT;
+        //     if (cht_custom[pc_lower_bits] == SN) {
+        //       cht_custom[pc_lower_bits] = WN;
+        //     } else {
+        //       cht_custom[pc_lower_bits] = WT;
+        //     }
+        //     break;
+        //   case WT:
+        //   case ST:
+        //     pht_nottaken[index] = ST;
+        //     break;
+        //   default:
+        //     printf("Warning");
+        //     break;
+        // }
+      } else {
+        switch (pht_nottaken[index]){
+          case SN:
+          case WN:
+            pht_nottaken[index] = SN;
+            break;
+          case WT:
+            pht_nottaken[index] = WN;
+            break;
+          case ST:
+            pht_nottaken[index] = WT;
+            break;
+          default:
+            printf("warning nottaken");
+            break;
+        }
+        cht_custom[pc_lower_bits] = SN;
+      }
+      break;
+    case WT:
+    case ST:
+      if(outcome == TAKEN) {
+        switch (pht_taken[index]){
+          case SN:
+          pht_taken[index] = WN;
+          break;
+          case WN:
+          pht_taken[index] = WT;
+          break;
+          case WT:
+          case ST:
+          pht_taken[index] = ST;
+          break;
+          default:
+          printf("warning in taken");
+          break;
+        }
+        cht_custom[pc_lower_bits] = ST;
+      } else {
+        switch (pht_taken[index]){
+          case SN:
+          case WN:
+            pht_taken[index] = SN;
+            break;
+          case WT:
+            pht_taken[index] = WN;
+            if (cht_custom[pc_lower_bits] == ST) {
+              cht_custom[pc_lower_bits] = WT;
+            } else {
+              cht_custom[pc_lower_bits] = WN;
+            }
+            break;
+          case ST:
+            pht_taken[index] = WT;
+            if(cht_custom[pc_lower_bits] == ST) {
+              cht_custom[pc_lower_bits] = WT;
+            } else {
+              cht_custom[pc_lower_bits] = WN;
+            }
+            break;
+          default:
+            printf("warning in taken");
+            break;
+        }
+      }
+      break;
   }
-  if (choice) {
-    t_pht[index] = saturator(outcome, t_pht[index]);
-  } else {
-    nt_pht[index] = saturator(outcome, nt_pht[index]);
-  }
-  //Update history register
   ghistory = ((ghistory << 1) | outcome);
 }
 
 void
 cleanup_custom() {
-  free(choice_pht);
-  free(t_pht);
-  free(nt_pht);
+  // free(choice_pht);
+  // free(t_pht);
+  // free(nt_pht);
 }
 void
 init_predictor()
