@@ -33,8 +33,8 @@ int bpType;       // Branch Prediction Type
 int verbose;
 
 //bimode
-int choiceBits = 13;
-int bimodehistoryBits = 13;
+int choiceBits = 12;
+int bimodehistoryBits = 12;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
