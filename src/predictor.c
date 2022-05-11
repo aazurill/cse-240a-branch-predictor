@@ -33,8 +33,8 @@ int bpType;       // Branch Prediction Type
 int verbose;
 
 //bimode
-int choiceBits = 12;
-int bimodehistoryBits = 12;
+int choiceBits = 13;
+int bimodehistoryBits = 13;
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -47,10 +47,10 @@ uint64_t ghistory;
 uint8_t *bht_gshare;
 
 //tournament
-uint8_t *choice_prediction; // 4096 x 2 bits
-uint8_t *local_bht; // 1024 * 2 bits
-uint8_t *local_pht; // 1024 * 10 bits
-uint8_t *global_bht; //4096 x 2 bits
+uint8_t *choice_prediction;
+uint8_t *local_bht;
+uint8_t *local_pht;
+uint8_t *global_bht;
 
 //bimode
 uint8_t *choice_pht;
@@ -273,8 +273,8 @@ cleanup_trnmt() {
 
 // -------------------------------------------------------------------
 // bimode predictor
-void
-init_custom() {
+
+void init_custom() {
   choice_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   nt_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
   t_pht = (uint8_t*)malloc((1 << choiceBits) * sizeof(uint8_t));
@@ -287,10 +287,11 @@ init_custom() {
   }
 
   ghistory = 0;
+
+  printf("testing");
 }
 
-uint8_t
-custom_predict(uint32_t pc) {
+uint8_t custom_predict(uint32_t pc) {
   int bht_entries = 1 << bimodehistoryBits;
   int pc_lower_bits = pc & (bht_entries-1);
   int ghistory_lower_bits = ghistory & (bht_entries -1);
@@ -305,25 +306,29 @@ custom_predict(uint32_t pc) {
   }
 }
 
-void
-train_custom(uint32_t pc, uint8_t outcome) {
-  uint32_t bht_entries = 1 << bimodehistoryBits;
-  uint32_t pc_lower_bits = pc & (bht_entries-1);
-  uint32_t ghistory_lower_bits = ghistory & (bht_entries -1);
-  uint32_t index = pc_lower_bits ^ ghistory_lower_bits;
+void train_custom(uint32_t pc, uint8_t outcome) {
+  int bht_entries = 1 << bimodehistoryBits;
+  int pc_lower_bits = pc & (bht_entries-1);
+  int ghistory_lower_bits = ghistory & (bht_entries -1);
+  int index = pc_lower_bits ^ ghistory_lower_bits;
 
-  uint8_t choice = outcome_generator(choice_pht[pc_lower_bits]);
-  uint8_t bimode_prediction = custom_predict(pc);
+  int choice = choice_pht[pc_lower_bits];
+  int direction_chosen = outcome_generator(choice_pht[pc_lower_bits]);
+  int nt_prediction = nt_pht[index];
+  int t_prediction = t_pht[index];
+  int bimode_prediction = custom_predict(pc);
 
  // If NOT (outcome of choice != outcome && direction pht (which is wrong) predicts correct) update choice
-  if (!(choice != outcome && bimode_prediction == outcome)) {
-    choice_pht[pc_lower_bits] = saturator(outcome, choice_pht[pc_lower_bits]);
+  if (!(outcome_generator(choice) != outcome && bimode_prediction == outcome)) {
+    choice_pht[pc_lower_bits] = saturator(outcome, choice);
   }
-  if (choice) {
-    t_pht[index] = saturator(outcome, t_pht[index]);
+
+  if (outcome_generator(choice) == 0) {
+    nt_pht[index] = saturator(outcome, nt_prediction);
   } else {
-    nt_pht[index] = saturator(outcome, nt_pht[index]);
+    t_pht[index] = saturator(outcome, t_prediction);
   }
+
   //Update history register
   ghistory = ((ghistory << 1) | outcome);
 }
