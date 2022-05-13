@@ -33,7 +33,7 @@ int bpType;       // Branch Prediction Type
 int verbose;
 
 //bimode
-int choiceBits = 12;
+int choiceBits = 12; // Number of bits used for choice PHT and btoh direction PHT
 int bimodehistoryBits = 12;
 //------------------------------------//
 //      Predictor Data Structures     //
@@ -47,15 +47,15 @@ uint64_t ghistory;
 uint8_t *bht_gshare;
 
 //tournament
-uint8_t *choice_prediction;
-uint8_t *local_bht;
-uint8_t *local_pht;
-uint8_t *global_bht;
+uint8_t *choice_prediction; // 4096 * 2 bit
+uint8_t *local_bht; // 1024 * 2 bit
+uint8_t *local_pht; // 1024 * 10 bit
+uint8_t *global_bht; // 4096 * 2 bit
 
 //bimode
-uint8_t *choice_pht;
-uint8_t *nt_pht;
-uint8_t *t_pht;
+uint8_t *choice_pht; // 1024 * 2 bit
+uint8_t *nt_pht; // 1024 * 2 bit
+uint8_t *t_pht; // 1024 * 2 bit
 
 // Helper outcome function
 int outcome_generator(uint32_t counter) {
@@ -287,8 +287,6 @@ void init_custom() {
   }
 
   ghistory = 0;
-
-  printf("testing");
 }
 
 uint8_t custom_predict(uint32_t pc) {
